@@ -155,6 +155,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 
 	outfile, err := os.Create(outpath)
 	if err != nil {
+		job.Status = web.StatusFailed
+
+		if err2 := w.svc.Update(ctx, job); err2 != nil {
+			log.Printf("failed to update job status: %v", err2)
+		}
+
 		return err
 	}
 
@@ -209,6 +215,11 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		w.cfg.ExtraReviews || job.Data.ExtraReviews,
 	)
 	if err != nil {
+		// Without this the job stays "working" forever: the API keeps
+		// reporting it as in-flight, so a client polling for ok/failed waits
+		// out its whole timeout instead of learning the job died here.
+		job.Status = web.StatusFailed
+
 		err2 := w.svc.Update(ctx, job)
 		if err2 != nil {
 			log.Printf("failed to update job status: %v", err2)
@@ -242,6 +253,12 @@ func (w *webrunner) scrapeJob(ctx context.Context, job *web.Job) error {
 		err = mate.Start(mateCtx, seedJobs...)
 		if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
 			cancel()
+
+			// A real scrape failure (driver crash, network) must be published
+			// as StatusFailed — leaving it "working" makes every client burn
+			// its full polling timeout before giving up, and hides the true
+			// error behind a misleading "timed out".
+			job.Status = web.StatusFailed
 
 			err2 := w.svc.Update(ctx, job)
 			if err2 != nil {

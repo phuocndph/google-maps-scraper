@@ -1,6 +1,10 @@
 cache/
 vendor
 bin
+
+# Local scrape output kept for reference. Not committed: this fork is public
+# and these hold real scraped business records, which the build doesn't need.
+docs/samples/
 webdata/
 examples/examples-api/map-outputs
 examples/examples-api/**/__pycache__/
