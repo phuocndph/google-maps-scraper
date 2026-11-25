@@ -313,6 +313,13 @@ func newBrowser(pw *playwright.Playwright, headless, disableImages bool, proxyPo
 			"--ignore-certificate-errors",
 			"--ignore-certificate-errors-spki-list",
 			"--disable-web-security",
+			// Giảm RAM/đĩa: gần như tắt cache ảnh/media và các dịch vụ nền
+			// không cần cho việc cào dữ liệu.
+			"--disk-cache-size=1",
+			"--media-cache-size=1",
+			"--disable-background-networking",
+			"--disable-component-update",
+			"--disable-domain-reliability",
 		},
 	}
 	if disableImages {
@@ -355,6 +362,21 @@ func newBrowser(pw *playwright.Playwright, headless, disableImages bool, proxyPo
 		}(),
 	})
 	if err != nil {
+		return nil, err
+	}
+
+	// Chặn tải các tài nguyên nặng, không cần cho việc trích xuất dữ liệu — ảnh,
+	// video/âm thanh, font — ngay ở tầng network. Đây là cách giảm RAM và băng
+	// thông của Chromium hiệu quả nhất (dữ liệu danh sách là text; CSS/JS vẫn
+	// được tải để Maps render đúng). Bổ sung cho --blink-settings=imagesEnabled=false.
+	blocked := map[string]bool{"image": true, "media": true, "font": true}
+	if err := bctx.Route("**/*", func(rt playwright.Route) {
+		if blocked[rt.Request().ResourceType()] {
+			_ = rt.Abort()
+			return
+		}
+		_ = rt.Continue()
+	}); err != nil {
 		return nil, err
 	}
 
